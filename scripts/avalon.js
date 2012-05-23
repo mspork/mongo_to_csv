@@ -1,5 +1,9 @@
 load("./scripts/libs/jsonpath-0.8.0.js");
 
+function type(o){
+    return !!o && Object.prototype.toString.call(o).match(/(\w+)\]/)[1];
+}
+
 var getPath = function(target_obj, path){
 	var res = jsonPath(target_obj,path);
 	if(res){
@@ -40,12 +44,31 @@ var getOrg = function(rels, type) {
 	return null;
 };
 
+
+var getRelationshipTarget = function(obj, relName, targetType) {
+	var path = "$.relationships[?(@.relation.name === \"" + relName + "\")].target.key";  
+	var key = getPath(obj,path);
+	if(key){
+			return db[targetType].findOne( { "_id" : ObjectId(key) });
+	}
+	return null;
+};
+
 var getPersonContactForOrg = function(rels, type) {
 	var relationship = getRelationshipByName(rels,type);
 	if(relationship){
 		if(relationship.relationships[0]) {
 			return db.core.contacts.findOne( { "_id" : ObjectId(relationship.relationships[0].target.key) });
 		}
+	}
+	return null;
+};
+
+var getNestedContact = function(obj, type) {
+	var path = "$.relationships[?(@.relation.name === \"" + type + "\")].relationships[0].target.key";  
+	var key = getPath(obj,path);
+	if(key){
+			return db.core.contacts.findOne( { "_id" : ObjectId(key) });
 	}
 	return null;
 };
@@ -70,7 +93,20 @@ var getHeaderRow = function(mapping){
 		}		
 	}	
 	return row;
-}
+};
+
+var getAltHeaderRow = function(mapping){
+	var row = "";
+	for(key in mapping){
+		row += mapping[key].crmName;
+		if(key != "MongoID"){
+			row += ",";
+		} else {
+			row += "\n";
+		}		
+	}	
+	return row;
+};
 
 
 var getRow = function(obj, mapping){
@@ -81,9 +117,10 @@ var getRow = function(obj, mapping){
 		var target_obj = null;
 
 		if(mapping[key].nestedLink){
-			target_obj = getPersonContactForOrg(obj.relationships, mapping[key].link);	
+			target_obj = getNestedContact(obj, mapping[key].link);	
 		} else if(mapping[key].link) {
-			target_obj = getOrg(obj.relationships, mapping[key].link);
+			// target_obj = getOrg(obj.relationships, mapping[key].link);
+			target_obj = getRelationshipTarget(obj,mapping[key].link,mapping[key].targetType);
 		} else {
 			target_obj = obj;
 		}
@@ -107,7 +144,15 @@ var getRow = function(obj, mapping){
 				row += value;
 				break;
 			case "date":
-				row += formatDate(value);
+				if(value != ""){
+					if(type(value) === "Date") {
+						row += formatDate(value);											
+					} else
+					{
+						row += value;
+						// print(key + " with value of [" + value + "] is not a Date for Object of type " + target_obj.type + " id: " + target_obj._id.toString());
+					}
+				}
 				break;
 			default:
 				row += "\"" + value + "\"";
