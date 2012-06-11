@@ -7,3 +7,5 @@ mongo testdata ./scripts/opportunities_to_csv.js > ../exports/csvs/opportunities
 mongo testdata ./scripts/offers_to_csv.js > ../exports/csvs/offers.csv
 mongo testdata ./scripts/verify_assets.js > ../exports/csvs/verify_assets.csv
 mongo testdata ./scripts/migration.js > ../exports/csvs/migration/opportunities.csv
+mongo testdata ./scripts/migration.js > ../exports/csvs/migration/verify_3.csv
+mongo testdata ./scripts/tests/linkpath_test.js > ../exports/csvs/tests/linkpaths.csv

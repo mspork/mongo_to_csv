@@ -1,4 +1,5 @@
 load("./scripts/libs/jsonpath-0.8.0.js");
+load("./scripts/models/typeCollectionMapping.js");
 
 function type(o){
     return !!o && Object.prototype.toString.call(o).match(/(\w+)\]/)[1];
@@ -27,42 +28,67 @@ var getRelationshipByName = function(rels, name) {
 
 var formatDate = function(date){
 	if(date){
+		 // Format: yyyy-MM-dd HH:mm:ss
 		return 	 date.getUTCFullYear() + "-" + 
 				(date.getUTCMonth() + 1) + "-" + 
-				 date.getUTCDate();	
+				 date.getUTCDate() + " " +
+				 date.getUTCHours() + ":" +
+				 date.getUTCMinutes() + ":" + 
+				 date.getUTCSeconds();					
+
 	}
 	return "";
 	
 };
 
 
-var getOrg = function(rels, type) {
-	var relation_instance = getRelationshipByName(rels, type);
-	if(relation_instance) {
-		return db.core.contacts.findOne( { "_id" : ObjectId(relation_instance.target.key) });
+// var getOrg = function(rels, type) {
+// 	var relation_instance = getRelationshipByName(rels, type);
+// 	if(relation_instance) {
+// 		return db.core.contacts.findOne( { "_id" : ObjectId(relation_instance.target.key) });
+// 	}
+// 	return null;
+// };
+
+var getTargetByRelationshipPath = function(obj, path) {
+	var pathArray = path.split('.');
+	for(i in pathArray){
+		obj = getRelationshipTarget(obj, pathArray[i]);
 	}
-	return null;
+	return obj;
 };
 
-
-var getRelationshipTarget = function(obj, relName, targetType) {
+var getRelationshipTarget = function(obj, relName) {
+	var targetType = getPath(obj,"$.relationships[?(@.relation.name === \"" + relName + "\")].target.type"); 
+	
 	var path = "$.relationships[?(@.relation.name === \"" + relName + "\")].target.key";  
+	
 	var key = getPath(obj,path);
 	if(key){
-			return db[targetType].findOne( { "_id" : ObjectId(key) });
+			return db[typeCollectionMapping[targetType]].findOne( { "_id" : ObjectId(key) });
 	}
 	return null;
 };
 
-var getPersonContactForOrg = function(rels, type) {
-	var relationship = getRelationshipByName(rels,type);
-	if(relationship){
-		if(relationship.relationships[0]) {
-			return db.core.contacts.findOne( { "_id" : ObjectId(relationship.relationships[0].target.key) });
-		}
-	}
-	return null;
+var getInverseLink = function(obj, inverseName) {
+	// var pathexpr = "$.relationships[?(@.relation.name === \"" + relName + "\")].target.key";
+	// var key = getPath(obj,pathexpr);
+	var key = obj._id.toString();
+	
+	var query =  {  'inverseRelationships.target.key' : key, 
+					"inverseRelationships.relation.name" : inverseName};
+	return db.core.linkPath.inverses.findOne( query );
 };
+
+// var getPersonContactForOrg = function(rels, type) {
+// 	var relationship = getRelationshipByName(rels,type);
+// 	if(relationship){
+// 		if(relationship.relationships[0]) {
+// 			return db.core.contacts.findOne( { "_id" : ObjectId(relationship.relationships[0].target.key) });
+// 		}
+// 	}
+// 	return null;
+// };
 
 var getNestedContact = function(obj, type) {
 	var path = "$.relationships[?(@.relation.name === \"" + type + "\")].relationships[0].target.key";  
@@ -74,13 +100,13 @@ var getNestedContact = function(obj, type) {
 };
 
 
-var getOpportunity = function(rels, rel_name) {
-	var relation_instance = getRelationshipByName(rels, rel_name);
-	if(relation_instance) {
-		return db.app.opportunities.findOne( { "_id" : ObjectId(relation_instance.target.key) });
-	}
-	return null;
-};
+// var getOpportunity = function(rels, rel_name) {
+// 	var relation_instance = getRelationshipByName(rels, rel_name);
+// 	if(relation_instance) {
+// 		return db.app.opportunities.findOne( { "_id" : ObjectId(relation_instance.target.key) });
+// 	}
+// 	return null;
+// };
 
 var getHeaderRow = function(mapping){
 	var row = "";
@@ -116,19 +142,20 @@ var getRow = function(obj, mapping){
 		
 		var target_obj = null;
 
-		if(mapping[key].nestedLink){
-			target_obj = getNestedContact(obj, mapping[key].link);	
-		} else if(mapping[key].link) {
+		if(mapping[key].nestedlinkPath){
+			target_obj = getNestedContact(obj, mapping[key].linkPath);	
+		} else if(mapping[key].linkPath) {
 			// target_obj = getOrg(obj.relationships, mapping[key].link);
-			target_obj = getRelationshipTarget(obj,mapping[key].link,mapping[key].targetType);
-		} else {
+			// target_obj = getRelationshipTarget(obj,mapping[key].linkPath,mapping[key].targetType);
+			target_obj = getTargetByRelationshipPath(obj,mapping[key].linkPath);
+		} else if(mapping[key].inverseName){
+			target_obj = getInverseLink(obj,mapping[key].inverseName);
+		}
+		else {
 			target_obj = obj;
 		}
-
-		var value = getPath(target_obj,mapping[key].path);
-
-		// print(key + ":" + mapping[key].path + ":" +value );
 		
+		var value = getPath(target_obj,mapping[key].path);
 		
 		if(mapping[key].script){
 			// print(value);
@@ -138,7 +165,12 @@ var getRow = function(obj, mapping){
 		switch(mapping[key].type)
 		{
 			case "string":
-				row += "\"" + value + "\"";
+				if(value != null){
+					row += "\"" + value.trim() + "\"";					
+				} else {
+					row += "";
+				}
+				
 				break;
 			case "number":
 				row += value;
@@ -147,6 +179,9 @@ var getRow = function(obj, mapping){
 				if(value != ""){
 					if(type(value) === "Date") {
 						row += formatDate(value);											
+					} else if((type(value) === "String") && (value.substr(23,1) == 'Z')){
+						var date = new ISODate(value);
+						row += formatDate(date);
 					} else
 					{
 						row += value;
