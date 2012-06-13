@@ -137,17 +137,24 @@ var getAltHeaderRow = function(mapping){
 
 var getRow = function(obj, mapping){
 	var row = "";
+	var cache = {};
 	
 	for(key in mapping){
 		
 		var target_obj = null;
+		
 
 		if(mapping[key].nestedlinkPath){
 			target_obj = getNestedContact(obj, mapping[key].linkPath);	
 		} else if(mapping[key].linkPath) {
-			// target_obj = getOrg(obj.relationships, mapping[key].link);
-			// target_obj = getRelationshipTarget(obj,mapping[key].linkPath,mapping[key].targetType);
-			target_obj = getTargetByRelationshipPath(obj,mapping[key].linkPath);
+			
+			if(cache[mapping[key].linkPath]) {
+				target_obj = cache[mapping[key].linkPath];
+			} else {
+				target_obj = getTargetByRelationshipPath(obj,mapping[key].linkPath);
+				cache[mapping[key].linkPath] = target_obj;
+			}
+			
 		} else if(mapping[key].inverseName){
 			target_obj = getInverseLink(obj,mapping[key].inverseName);
 		}
@@ -199,6 +206,7 @@ var getRow = function(obj, mapping){
 			row += "\n";
 		}
 	}
+	cache = {};
 	return row;	
 	
 };
