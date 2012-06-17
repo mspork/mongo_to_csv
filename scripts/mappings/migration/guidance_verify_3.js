@@ -87,7 +87,7 @@ var mapping = {
 		crmName: "Opportunity.new_clienttheatrename"
 	},
 	"Opportunity.extensions.master.country" : {
-		path: "$.extensions.master.country.value.name",
+		path: "$.extensions.master.country.value.displayName",
 		type: "string",
 		crmName: "Opportunity.new_countryname"
 	},
